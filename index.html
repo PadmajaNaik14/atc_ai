@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Flight Predictions Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; width: 100vw; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Initialize map centered over Delhi
+    var map = L.map('map').setView([28.6, 77.2], 9);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Layers for real flights, predictions, and lines
+    var flightsLayer = L.layerGroup().addTo(map);
+    var predictionsLayer = L.layerGroup().addTo(map);
+    var linesLayer = L.layerGroup().addTo(map);
+
+    async function fetchData() {
+      try {
+        let response = await fetch("/flights");
+        let data = await response.json();
+
+        // Clear old markers
+        flightsLayer.clearLayers();
+        predictionsLayer.clearLayers();
+        linesLayer.clearLayers();
+
+        // Create a dictionary for predictions
+        let predMap = {};
+        data.predictions.forEach(p => { predMap[p.icao24] = p; });
+
+        // Plot real flights + predicted positions
+        data.flights.forEach(f => {
+          if (f.lat && f.lon) {
+            // Real flight position
+            var realMarker = L.circleMarker([f.lat, f.lon], {
+              radius: 5,
+              color: "blue",
+              fillColor: "blue",
+              fillOpacity: 0.8
+            }).bindPopup(`Flight: ${f.callsign || "N/A"}<br>Country: ${f.origin_country}`);
+            realMarker.addTo(flightsLayer);
+
+            // Predicted position (if exists)
+            let pred = predMap[f.icao24];
+            if (pred && pred.lat && pred.lon) {
+              var predMarker = L.circleMarker([pred.lat, pred.lon], {
+                radius: 5,
+                color: "red",
+                fillColor: "red",
+                fillOpacity: 0.8
+              }).bindPopup(`Prediction for ${f.callsign || "N/A"}`);
+              predMarker.addTo(predictionsLayer);
+
+              // Draw line between real and predicted
+              var line = L.polyline([
+                [f.lat, f.lon],
+                [pred.lat, pred.lon]
+              ], { color: "green", weight: 2, dashArray: "4,4" });
+              line.addTo(linesLayer);
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching flight data:", err);
+      }
+    }
+
+    // Update every 10 seconds
+    fetchData();
+    setInterval(fetchData, 10000);
+  </script>
+</body>
+</html>
